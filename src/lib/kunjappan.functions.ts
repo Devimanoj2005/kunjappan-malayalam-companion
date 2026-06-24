@@ -92,7 +92,7 @@ export const transcribeMalayalam = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => TranscribeInput.parse(d))
   .handler(async ({ data }) => {
     guardAiRequest();
-    const key = requireLovableApiKey();
+    const key = requireGroqKey();
     const binary = atob(data.audioBase64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -104,13 +104,14 @@ export const transcribeMalayalam = createServerFn({ method: "POST" })
       : "webm";
 
     const form = new FormData();
-    form.append("model", "openai/gpt-4o-mini-transcribe");
+    form.append("model", "whisper-large-v3");
     form.append("file", new Blob([bytes], { type: data.mimeType }), `audio.${ext}`);
     form.append("language", "ml");
+    form.append("response_format", "json");
 
-    const res = await fetch(`${GATEWAY_BASE}/audio/transcriptions`, {
+    const res = await fetch(`${GROQ_BASE}/audio/transcriptions`, {
       method: "POST",
-      headers: { "Lovable-API-Key": key },
+      headers: { Authorization: `Bearer ${key}` },
       body: form,
     });
     if (!res.ok) {
