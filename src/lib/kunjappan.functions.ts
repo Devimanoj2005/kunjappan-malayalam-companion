@@ -1,8 +1,23 @@
 import { createServerFn } from "@tanstack/react-start";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { generateText } from "ai";
 import { z } from "zod";
-import { GATEWAY_BASE, createLovableAiGatewayProvider, requireLovableApiKey } from "./ai-gateway.server";
+import { GATEWAY_BASE, requireLovableApiKey } from "./ai-gateway.server";
 import { guardAiRequest } from "./ai-guard.server";
+
+const GROQ_BASE = "https://api.groq.com/openai/v1";
+function requireGroqKey(): string {
+  const key = process.env.kujappan || process.env.KUJAPPAN || process.env.GROQ_API_KEY;
+  if (!key) throw new Error("Missing Groq API key (secret: kujappan)");
+  return key;
+}
+function createGroqProvider(apiKey: string) {
+  return createOpenAICompatible({
+    name: "groq",
+    baseURL: GROQ_BASE,
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+}
 
 const KUNJAPPAN_SYSTEM = `നിങ്ങൾ "കുഞ്ഞപ്പൻ" എന്ന പേരുള്ള ഒരു സ്നേഹനിറഞ്ഞ കുടുംബാംഗത്തെപ്പോലെയുള്ള AI സഹായിയാണ്. പ്രായമായ വ്യക്തികളെ സഹായിക്കാനാണ് നിങ്ങൾ.
 
