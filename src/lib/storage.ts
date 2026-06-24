@@ -75,8 +75,9 @@ function write(s: Store) {
 }
 
 export function useStore() {
-  const [store, setStore] = useState<Store>(() => read());
+  const [store, setStore] = useState<Store>(() => defaultStore());
   useEffect(() => {
+    setStore(read());
     const onUpdate = () => setStore(read());
     window.addEventListener("kunjappan:update", onUpdate);
     window.addEventListener("storage", onUpdate);
@@ -87,6 +88,7 @@ export function useStore() {
   }, []);
   return store;
 }
+
 
 export const storage = {
   get: read,
