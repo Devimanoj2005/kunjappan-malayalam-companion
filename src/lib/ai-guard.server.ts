@@ -20,22 +20,45 @@ function checkRateLimit(ip: string) {
 }
 
 function checkOrigin() {
+const ALLOWED_HOST_SUFFIXES = [
+  "localhost",
+  "127.0.0.1",
+  ".lovable.app",
+  ".lovableproject.com",
+  ".lovable.dev",
+];
+
+function hostMatches(a: string, b: string) {
+  const stripPort = (h: string) => h.replace(/:\d+$/, "").toLowerCase();
+  return stripPort(a) === stripPort(b);
+}
+
+function isAllowedHost(host: string) {
+  const h = host.replace(/:\d+$/, "").toLowerCase();
+  return ALLOWED_HOST_SUFFIXES.some((s) =>
+    s.startsWith(".") ? h.endsWith(s) || h === s.slice(1) : h === s,
+  );
+}
+
+function checkOrigin() {
   const req = getRequest();
   const host = getRequestHeader("host") ?? "";
   const origin = getRequestHeader("origin") ?? "";
   const referer = getRequestHeader("referer") ?? "";
   const source = origin || referer;
-  if (!source) return; // some clients omit; rate limit still applies
+  if (!source) return;
   try {
     const sourceHost = new URL(source).host;
     const reqHost = host || new URL(req.url).host;
-    if (sourceHost !== reqHost) {
-      throw new Error("Request blocked.");
-    }
-  } catch {
+    if (hostMatches(sourceHost, reqHost)) return;
+    if (isAllowedHost(sourceHost)) return;
+    throw new Error("Request blocked.");
+  } catch (e) {
+    if (e instanceof Error && e.message === "Request blocked.") throw e;
     throw new Error("Request blocked.");
   }
 }
+
 
 export function guardAiRequest() {
   checkOrigin();
