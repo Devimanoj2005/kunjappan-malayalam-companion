@@ -63,7 +63,7 @@ export const chatWithKunjappan = createServerFn({ method: "POST" })
 
     try {
       const { text } = await generateText({
-        model: gateway.chatModel("google/gemini-3-flash-preview"),
+        model: gateway.chatModel("llama-3.3-70b-versatile"),
         system,
         messages: data.messages.map((m) => ({ role: m.role, content: m.content })),
       });
