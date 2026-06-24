@@ -49,8 +49,8 @@ export const chatWithKunjappan = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => ChatInput.parse(d))
   .handler(async ({ data }) => {
     guardAiRequest();
-    const key = requireLovableApiKey();
-    const gateway = createLovableAiGatewayProvider(key);
+    const key = requireGroqKey();
+    const gateway = createGroqProvider(key);
 
     const profileContext: string[] = [];
     if (data.profile?.name) profileContext.push(`ഉപയോക്താവിന്റെ പേര്: ${data.profile.name}`);
