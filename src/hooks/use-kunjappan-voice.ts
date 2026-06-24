@@ -30,6 +30,10 @@ export function useKunjappanVoice(options?: { onEmergency?: (reason: string) => 
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const autoStopRef = useRef<number | null>(null);
+
+  const MAX_RECORD_MS = 45_000;
+  const MAX_UPLOAD_BYTES = 4_500_000; // ~4.5MB raw → ~6MB base64; safe for worker body
 
   async function startRecording() {
     try {
@@ -39,6 +43,7 @@ export function useKunjappanVoice(options?: { onEmergency?: (reason: string) => 
       chunksRef.current = [];
       rec.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       rec.onstop = async () => {
+        if (autoStopRef.current) { window.clearTimeout(autoStopRef.current); autoStopRef.current = null; }
         stream.getTracks().forEach((t) => t.stop());
         const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
         if (blob.size < 1200) {
@@ -46,10 +51,21 @@ export function useKunjappanVoice(options?: { onEmergency?: (reason: string) => 
           setStatus("idle");
           return;
         }
+        if (blob.size > MAX_UPLOAD_BYTES) {
+          toast.error("സന്ദേശം വളരെ നീളമുള്ളതാണ്. ചെറുതായി സംസാരിക്കൂ");
+          setStatus("idle");
+          return;
+        }
         await handleAudio(blob);
       };
       rec.start();
       mediaRef.current = rec;
+      autoStopRef.current = window.setTimeout(() => {
+        if (mediaRef.current && mediaRef.current.state === "recording") {
+          try { mediaRef.current.stop(); } catch {}
+          setRecording(false);
+        }
+      }, MAX_RECORD_MS);
       setRecording(true);
       setStatus("listening");
     } catch (e) {
