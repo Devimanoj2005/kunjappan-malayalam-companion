@@ -1,8 +1,23 @@
 import { createServerFn } from "@tanstack/react-start";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { generateText } from "ai";
 import { z } from "zod";
-import { GATEWAY_BASE, createLovableAiGatewayProvider, requireLovableApiKey } from "./ai-gateway.server";
+import { GATEWAY_BASE, requireLovableApiKey } from "./ai-gateway.server";
 import { guardAiRequest } from "./ai-guard.server";
+
+const GROQ_BASE = "https://api.groq.com/openai/v1";
+function requireGroqKey(): string {
+  const key = process.env.kujappan || process.env.KUJAPPAN || process.env.GROQ_API_KEY;
+  if (!key) throw new Error("Missing Groq API key (secret: kujappan)");
+  return key;
+}
+function createGroqProvider(apiKey: string) {
+  return createOpenAICompatible({
+    name: "groq",
+    baseURL: GROQ_BASE,
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+}
 
 const KUNJAPPAN_SYSTEM = `നിങ്ങൾ "കുഞ്ഞപ്പൻ" എന്ന പേരുള്ള ഒരു സ്നേഹനിറഞ്ഞ കുടുംബാംഗത്തെപ്പോലെയുള്ള AI സഹായിയാണ്. പ്രായമായ വ്യക്തികളെ സഹായിക്കാനാണ് നിങ്ങൾ.
 
@@ -34,8 +49,8 @@ export const chatWithKunjappan = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => ChatInput.parse(d))
   .handler(async ({ data }) => {
     guardAiRequest();
-    const key = requireLovableApiKey();
-    const gateway = createLovableAiGatewayProvider(key);
+    const key = requireGroqKey();
+    const gateway = createGroqProvider(key);
 
     const profileContext: string[] = [];
     if (data.profile?.name) profileContext.push(`ഉപയോക്താവിന്റെ പേര്: ${data.profile.name}`);
@@ -48,7 +63,7 @@ export const chatWithKunjappan = createServerFn({ method: "POST" })
 
     try {
       const { text } = await generateText({
-        model: gateway.chatModel("google/gemini-3-flash-preview"),
+        model: gateway.chatModel("llama-3.3-70b-versatile"),
         system,
         messages: data.messages.map((m) => ({ role: m.role, content: m.content })),
       });
@@ -77,7 +92,7 @@ export const transcribeMalayalam = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => TranscribeInput.parse(d))
   .handler(async ({ data }) => {
     guardAiRequest();
-    const key = requireLovableApiKey();
+    const key = requireGroqKey();
     const binary = atob(data.audioBase64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -89,13 +104,14 @@ export const transcribeMalayalam = createServerFn({ method: "POST" })
       : "webm";
 
     const form = new FormData();
-    form.append("model", "openai/gpt-4o-mini-transcribe");
+    form.append("model", "whisper-large-v3");
     form.append("file", new Blob([bytes], { type: data.mimeType }), `audio.${ext}`);
     form.append("language", "ml");
+    form.append("response_format", "json");
 
-    const res = await fetch(`${GATEWAY_BASE}/audio/transcriptions`, {
+    const res = await fetch(`${GROQ_BASE}/audio/transcriptions`, {
       method: "POST",
-      headers: { "Lovable-API-Key": key },
+      headers: { Authorization: `Bearer ${key}` },
       body: form,
     });
     if (!res.ok) {
