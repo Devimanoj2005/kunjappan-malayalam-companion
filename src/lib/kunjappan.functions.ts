@@ -59,8 +59,14 @@ export const chatWithKunjappan = createServerFn({ method: "POST" })
     }
   });
 
-const AudioMime = z.enum(["audio/webm", "audio/mp4", "audio/mpeg", "audio/wav", "audio/ogg"]);
-const ImageMime = z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const AudioMime = z.preprocess(
+  (v) => (typeof v === "string" ? v.split(";")[0].trim().toLowerCase() : v),
+  z.enum(["audio/webm", "audio/mp4", "audio/mpeg", "audio/wav", "audio/ogg"]),
+);
+const ImageMime = z.preprocess(
+  (v) => (typeof v === "string" ? v.split(";")[0].trim().toLowerCase() : v),
+  z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]),
+);
 
 const TranscribeInput = z.object({
   audioBase64: z.string().min(10).max(15_000_000),
