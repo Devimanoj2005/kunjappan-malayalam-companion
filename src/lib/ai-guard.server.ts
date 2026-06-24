@@ -19,7 +19,6 @@ function checkRateLimit(ip: string) {
   }
 }
 
-function checkOrigin() {
 const ALLOWED_HOST_SUFFIXES = [
   "localhost",
   "127.0.0.1",
