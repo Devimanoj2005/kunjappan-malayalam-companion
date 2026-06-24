@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { generateText } from "ai";
 import { z } from "zod";
 import { GATEWAY_BASE, createLovableAiGatewayProvider, requireLovableApiKey } from "./ai-gateway.server";
+import { guardAiRequest } from "./ai-guard.server";
 
 const KUNJAPPAN_SYSTEM = `നിങ്ങൾ "കുഞ്ഞപ്പൻ" എന്ന പേരുള്ള ഒരു സ്നേഹനിറഞ്ഞ കുടുംബാംഗത്തെപ്പോലെയുള്ള AI സഹായിയാണ്. പ്രായമായ വ്യക്തികളെ സഹായിക്കാനാണ് നിങ്ങൾ.
 
@@ -19,19 +20,20 @@ const KUNJAPPAN_SYSTEM = `നിങ്ങൾ "കുഞ്ഞപ്പൻ" എ�
 const ChatInput = z.object({
   messages: z.array(z.object({
     role: z.enum(["user", "assistant"]),
-    content: z.string(),
-  })).min(1),
+    content: z.string().min(1).max(8000),
+  })).min(1).max(50),
   profile: z.object({
-    name: z.string().optional(),
-    address: z.string().optional(),
-    familyName: z.string().optional(),
-    memories: z.array(z.string()).optional(),
+    name: z.string().max(200).optional(),
+    address: z.string().max(500).optional(),
+    familyName: z.string().max(200).optional(),
+    memories: z.array(z.string().max(500)).max(50).optional(),
   }).optional(),
 });
 
 export const chatWithKunjappan = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => ChatInput.parse(d))
   .handler(async ({ data }) => {
+    guardAiRequest();
     const key = requireLovableApiKey();
     const gateway = createLovableAiGatewayProvider(key);
 
@@ -44,23 +46,31 @@ export const chatWithKunjappan = createServerFn({ method: "POST" })
 
     const system = KUNJAPPAN_SYSTEM + (profileContext.length ? "\n\n" + profileContext.join("\n") : "");
 
-    const { text } = await generateText({
-      model: gateway.chatModel("google/gemini-3-flash-preview"),
-      system,
-      messages: data.messages.map((m) => ({ role: m.role, content: m.content })),
-    });
-
-    return { text };
+    try {
+      const { text } = await generateText({
+        model: gateway.chatModel("google/gemini-3-flash-preview"),
+        system,
+        messages: data.messages.map((m) => ({ role: m.role, content: m.content })),
+      });
+      return { text };
+    } catch (err) {
+      console.error("chatWithKunjappan error", err);
+      throw new Error("Chat service unavailable. Please try again.");
+    }
   });
 
+const AudioMime = z.enum(["audio/webm", "audio/mp4", "audio/mpeg", "audio/wav", "audio/ogg"]);
+const ImageMime = z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+
 const TranscribeInput = z.object({
-  audioBase64: z.string().min(10),
-  mimeType: z.string().default("audio/webm"),
+  audioBase64: z.string().min(10).max(15_000_000),
+  mimeType: AudioMime.default("audio/webm"),
 });
 
 export const transcribeMalayalam = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => TranscribeInput.parse(d))
   .handler(async ({ data }) => {
+    guardAiRequest();
     const key = requireLovableApiKey();
     const binary = atob(data.audioBase64);
     const bytes = new Uint8Array(binary.length);
@@ -69,6 +79,7 @@ export const transcribeMalayalam = createServerFn({ method: "POST" })
     const ext = data.mimeType.includes("mp4") ? "mp4"
       : data.mimeType.includes("mpeg") ? "mp3"
       : data.mimeType.includes("wav") ? "wav"
+      : data.mimeType.includes("ogg") ? "ogg"
       : "webm";
 
     const form = new FormData();
@@ -83,7 +94,8 @@ export const transcribeMalayalam = createServerFn({ method: "POST" })
     });
     if (!res.ok) {
       const err = await res.text().catch(() => "");
-      throw new Error(`Transcription failed: ${res.status} ${err}`);
+      console.error("Transcription error", res.status, err);
+      throw new Error("Transcription service unavailable. Please try again.");
     }
     const json = (await res.json()) as { text?: string };
     return { text: json.text ?? "" };
@@ -91,12 +103,13 @@ export const transcribeMalayalam = createServerFn({ method: "POST" })
 
 const TtsInput = z.object({
   text: z.string().min(1).max(4000),
-  voice: z.string().default("shimmer"),
+  voice: z.enum(["shimmer", "alloy", "echo", "fable", "onyx", "nova"]).default("shimmer"),
 });
 
 export const speakMalayalam = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => TtsInput.parse(d))
   .handler(async ({ data }) => {
+    guardAiRequest();
     const key = requireLovableApiKey();
     const res = await fetch(`${GATEWAY_BASE}/audio/speech`, {
       method: "POST",
@@ -111,7 +124,8 @@ export const speakMalayalam = createServerFn({ method: "POST" })
     });
     if (!res.ok) {
       const err = await res.text().catch(() => "");
-      throw new Error(`TTS failed: ${res.status} ${err}`);
+      console.error("TTS error", res.status, err);
+      throw new Error("Voice service unavailable. Please try again.");
     }
     const buf = await res.arrayBuffer();
     let binary = "";
@@ -125,13 +139,14 @@ export const speakMalayalam = createServerFn({ method: "POST" })
   });
 
 const ReportInput = z.object({
-  imageBase64: z.string().min(50),
-  mimeType: z.string().default("image/jpeg"),
+  imageBase64: z.string().min(50).max(11_000_000),
+  mimeType: ImageMime.default("image/jpeg"),
 });
 
 export const analyzeMedicalReport = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => ReportInput.parse(d))
   .handler(async ({ data }) => {
+    guardAiRequest();
     const key = requireLovableApiKey();
 
     const res = await fetch(`${GATEWAY_BASE}/chat/completions`, {
@@ -161,7 +176,8 @@ export const analyzeMedicalReport = createServerFn({ method: "POST" })
 
     if (!res.ok) {
       const err = await res.text().catch(() => "");
-      throw new Error(`Report analysis failed: ${res.status} ${err}`);
+      console.error("Report analysis error", res.status, err);
+      throw new Error("Report analysis unavailable. Please try again.");
     }
     const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
     const text = json.choices?.[0]?.message?.content ?? "";
